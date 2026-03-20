@@ -1,4 +1,5 @@
 import os
+import requests
 
 from fastapi import FastAPI, Request, Header, HTTPException
 from linebot.v3 import WebhookParser
@@ -8,7 +9,6 @@ from linebot.v3.messaging import (
     ApiClient,
     Configuration,
     MessagingApi,
-    MessagingApiBlob,
     ReplyMessageRequest,
     TextMessage,
 )
@@ -53,24 +53,28 @@ async def callback(
     return "OK"
 
 
+def download_image(message_id: str) -> bytes:
+    """直接用 HTTP 從 LINE 下載圖片"""
+    url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
+    headers = {"Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    return resp.content
+
+
 def handle_image(event: MessageEvent):
     """下載圖片 → OCR → 回傳文字給使用者"""
+    image_bytes = download_image(event.message.id)
+    text = extract_text(image_bytes)
+
+    reply = (
+        f"✅ 行照辨識結果：\n\n{text}"
+        if text.strip()
+        else "⚠️ 無法辨識文字，請確認圖片清晰且光線充足後重新拍攝。"
+    )
+
     with ApiClient(configuration) as api_client:
-        blob_api = MessagingApiBlob(api_client)
         line_bot_api = MessagingApi(api_client)
-
-        # 從 LINE 伺服器下載圖片
-        image_bytes = blob_api.get_message_content(event.message.id)
-
-        # OCR 辨識
-        text = extract_text(image_bytes)
-
-        reply = (
-            f"✅ 行照辨識結果：\n\n{text}"
-            if text.strip()
-            else "⚠️ 無法辨識文字，請確認圖片清晰且光線充足後重新拍攝。"
-        )
-
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
