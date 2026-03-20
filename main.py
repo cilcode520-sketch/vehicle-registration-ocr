@@ -9,7 +9,7 @@ from linebot.v3.messaging import (
     ApiClient,
     Configuration,
     MessagingApi,
-    ReplyMessageRequest,
+    PushMessageRequest,
     TextMessage,
 )
 
@@ -75,9 +75,9 @@ def handle_image(event: MessageEvent):
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=event.source.user_id,
                 messages=[TextMessage(text=reply)],
             )
         )
