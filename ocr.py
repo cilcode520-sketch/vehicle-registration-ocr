@@ -1,11 +1,8 @@
-import io
 import os
+from google import genai
+from google.genai import types
 
-import google.generativeai as genai
-from PIL import Image
-
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 PROMPT = (
     "這是一張台灣的行車執照（行照）。\n"
@@ -29,8 +26,13 @@ PROMPT = (
 
 def extract_text(image_bytes: bytes) -> str:
     try:
-        img = Image.open(io.BytesIO(image_bytes))
-        response = model.generate_content([img, PROMPT])
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                PROMPT,
+            ],
+        )
         return response.text
     except Exception as e:
         return f"⚠️ 辨識失敗：{e}"
