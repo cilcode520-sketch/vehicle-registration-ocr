@@ -5,7 +5,7 @@ import google.generativeai as genai
 from PIL import Image
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 PROMPT = (
     "這是一張台灣的行車執照（行照）。\n"
