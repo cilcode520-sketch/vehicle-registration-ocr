@@ -1,7 +1,7 @@
 import os
 import requests
 
-from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi import FastAPI, Request, Header, HTTPException, BackgroundTasks
 from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import MessageEvent, ImageMessageContent
@@ -35,6 +35,7 @@ async def health():
 @app.post("/callback")
 async def callback(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_line_signature: str = Header(...),
 ):
     body = await request.body()
@@ -48,7 +49,8 @@ async def callback(
         if isinstance(event, MessageEvent) and isinstance(
             event.message, ImageMessageContent
         ):
-            handle_image(event)
+            # 立刻回 200，OCR 在背景執行，LINE 不會重送
+            background_tasks.add_task(handle_image, event)
 
     return "OK"
 
