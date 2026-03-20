@@ -1,12 +1,17 @@
 import os
-import hashlib
-import hmac
-import base64
 
 from fastapi import FastAPI, Request, Header, HTTPException
-from linebot import LineBotApi, WebhookParser
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, ImageMessage, TextSendMessage
+from linebot.v3 import WebhookParser
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.webhooks import MessageEvent, ImageMessageContent
+from linebot.v3.messaging import (
+    ApiClient,
+    Configuration,
+    MessagingApi,
+    MessagingApiBlob,
+    ReplyMessageRequest,
+    TextMessage,
+)
 
 from ocr import extract_text
 
@@ -14,13 +19,13 @@ from ocr import extract_text
 CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 
-line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)
 
 app = FastAPI()
 
 
-# ── 健康檢查（Railway 會 ping 這裡）───────────────────────
+# ── 健康檢查 ──────────────────────────────────────────────
 @app.get("/")
 async def health():
     return {"status": "ok"}
@@ -34,7 +39,6 @@ async def callback(
 ):
     body = await request.body()
 
-    # 驗證簽名，防止偽造請求
     try:
         events = parser.parse(body.decode("utf-8"), x_line_signature)
     except InvalidSignatureError:
@@ -42,28 +46,34 @@ async def callback(
 
     for event in events:
         if isinstance(event, MessageEvent) and isinstance(
-            event.message, ImageMessage
+            event.message, ImageMessageContent
         ):
-            await handle_image(event)
+            handle_image(event)
 
     return "OK"
 
 
-async def handle_image(event: MessageEvent):
+def handle_image(event: MessageEvent):
     """下載圖片 → OCR → 回傳文字給使用者"""
-    # 從 LINE 伺服器下載圖片
-    message_content = line_bot_api.get_message_content(event.message.id)
-    image_bytes = b"".join(chunk for chunk in message_content.iter_content())
+    with ApiClient(configuration) as api_client:
+        blob_api = MessagingApiBlob(api_client)
+        line_bot_api = MessagingApi(api_client)
 
-    # OCR 辨識
-    text = extract_text(image_bytes)
+        # 從 LINE 伺服器下載圖片
+        image_bytes = blob_api.get_message_content(event.message.id)
 
-    if text.strip():
-        reply = f"✅ 行照辨識結果：\n\n{text}"
-    else:
-        reply = "⚠️ 無法辨識文字，請確認圖片清晰且光線充足後重新拍攝。"
+        # OCR 辨識
+        text = extract_text(image_bytes)
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply),
-    )
+        reply = (
+            f"✅ 行照辨識結果：\n\n{text}"
+            if text.strip()
+            else "⚠️ 無法辨識文字，請確認圖片清晰且光線充足後重新拍攝。"
+        )
+
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply)],
+            )
+        )
